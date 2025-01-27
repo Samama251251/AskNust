@@ -22,7 +22,6 @@ func main() {
 
     http.HandleFunc("/encode", func(w http.ResponseWriter, r *http.Request) {
         peter := User{
-            Firstname: "John",
             Lastname:  "Doe",
             Age:       25,
         }
