@@ -24,7 +24,7 @@ def search_documents(query: str, k: int = 3):
 
 # Example usage
 if __name__ == "__main__":
-    query = "what will happen if a student comes to hostel after 11pm" 
+    query =  "Hi I am a student at nust, I want to bring my father to visit the room, is it allowed?" 
     matching_docs = search_documents(query)
     
     print("\nTop 2 matching documents:")
