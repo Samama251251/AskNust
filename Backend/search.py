@@ -1,10 +1,11 @@
 from langchain_pinecone import PineconeVectorStore
 from langchain_openai import OpenAIEmbeddings
 import os
-
+from dotenv import load_dotenv
+load_dotenv()
 # Set up environment variables
-os.environ['OPENAI_API_KEY'] = 'sk-SNmrvRHrImV6BNABsxAgCgpVQw1dIgsGcVQsDbeMdMT3BlbkFJkE4nudEUff3LhipEAFd4TU4EK4NCC3oorbInBsPikA'
-os.environ['PINECONE_API_KEY'] = 'pcsk_71EcLV_3A37JhnuxAn3UX5bEJX3cbBP7aNNi5ifksSTyzWgatizjr7GWM7Rspb11AXtHCQ'
+os.environ['OPENAI_API_KEY'] = os.getenv('OPENAI_API_KEY')
+os.environ['PINECONE_API_KEY'] = os.getenv('PINECONE_API_KEY')
 
 def search_documents(query: str, k: int = 3):
     # Initialize embeddings and vector store
@@ -24,10 +25,10 @@ def search_documents(query: str, k: int = 3):
 
 # Example usage
 if __name__ == "__main__":
-    query =  "Hi I am a student at nust, I want to bring my father to visit the room, is it allowed?" 
+    query =  "What happens if I my attendance is below 75%" 
     matching_docs = search_documents(query)
     
-    print("\nTop 2 matching documents:")
+    print("\nTop 3 matching documents:")
     for i, doc in enumerate(matching_docs, 1):
         print(f"\nDocument {i}:")
         print(f"Content: {doc.page_content}")

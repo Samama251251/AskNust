@@ -9,3 +9,8 @@ venv/
 .vscode/
 .main
 main
+*.pdf
+*.pdf
+/Frontend/node_modules
+/Frontend/package-lock.json
+
