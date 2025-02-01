@@ -96,13 +96,13 @@ qa_prompt = ChatPromptTemplate.from_messages(
 
 # Create the chain
 question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
-rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
+# rag_chain = create_retrieval_chain(history_aware_retriever)
 
 # Modify the langchain_generator function
 async def langchain_generator(user_prompt: str, chat_history=[]):
     try:
         # Use the RAG chain instead of direct retrieval
-        result = await rag_chain.ainvoke({
+        result = await history_aware_retriever.ainvoke({
             "input": user_prompt,
             "chat_history": chat_history
         })
@@ -134,7 +134,7 @@ async def test_chat(prompt: str, chat_history: list = []):
         str: Assistant's response
     """
     try:
-        result = await rag_chain.ainvoke({
+        result = await history_aware_retriever.ainvoke({
             "input": prompt,
             "chat_history": chat_history
         })
@@ -142,7 +142,7 @@ async def test_chat(prompt: str, chat_history: list = []):
         print(result)
         print()
         # print("Regenarated Question",{retriever_output})
-        return result["answer"]
+        return None
     except Exception as e:
         return f"Error: {str(e)}"
 
