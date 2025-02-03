@@ -20,7 +20,7 @@ def search_documents(query: str, k: int = 3):
         query=query,
         k=k  # Return top 2 most similar documents
     )
-    
+    print("hello")
     return results
 
 # Example usage

@@ -28,6 +28,7 @@ app.add_middleware(
 embeddings = OpenAIEmbeddings()
 # Initialize Pinecone
 vectorstore = PineconeVectorStore(
+    
         index_name="asknust",
         embedding=embeddings
     )
@@ -53,7 +54,7 @@ contextualize_q_system_prompt = (
     "which might reference context in the chat history, "
     "formulate a standalone question which can be understood "
     "without the chat history. Do NOT answer the question, just "
-    "reformulate it if needed and otherwise return it as is and make sure that the new generated question does not contain the word Nust"
+    "reformulate it if needed and otherwise return it but make sure the question does not contain the word Nust in either case"
 )
 
 contextualize_q_prompt = ChatPromptTemplate.from_messages(
@@ -80,8 +81,7 @@ qa_system_prompt = (
     "You are an assistant for question-answering tasks. Use "
     "the following pieces of retrieved context to answer the "
     "question. If you don't know the answer, just say that you "
-    "don't know. Use three sentences maximum and keep the answer "
-    "concise."
+    "don't know."
     "\n\n"
     "{context}"
 )
@@ -156,7 +156,7 @@ async def main():
     ]
     
     # Test new question with chat history context
-    question = "What does it actually means"
+    question = "How many credit hours does a software engineering student requies to graduate from Nust"
     print(f"\nUser: {question}")
     response = await test_chat(question, chat_history)
     print(f"AI: {response}")

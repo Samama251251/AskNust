@@ -21,8 +21,6 @@ const Signup = () => {
       });
       return;
     }
-    setPasswordError("");
-    console.log("Signup:", { name, email, password });
   };
 
   return (
