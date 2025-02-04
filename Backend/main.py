@@ -17,8 +17,10 @@ from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import SystemMessage, HumanMessage
 from contextlib import asynccontextmanager
 from utils.auth import create_access_token
-from fastapi import Response,status,JSONResponse
+from fastapi import Response,status
 from passlib.context import CryptContext
+from fastapi.responses import JSONResponse
+
 load_dotenv()
 
 # Global variable for repository

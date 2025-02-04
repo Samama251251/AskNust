@@ -2,6 +2,9 @@ from typing import Optional, List
 from models.user import UserInDB, UserCreate
 from config.database import Database
 from datetime import datetime
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class UserRepository:
     def __init__(self):
@@ -10,7 +13,7 @@ class UserRepository:
 
     async def create_user(self, user: UserCreate) -> UserInDB:
         user_dict = user.dict()
-        user_dict["hashed_password"] = user_dict.pop("password")  # Replace with proper hashing
+        user_dict["hashed_password"] = pwd_context.hash(user_dict.pop("password"))
         user_dict["created_at"] = datetime.utcnow()
         
         result = await self.collection.insert_one(user_dict)
