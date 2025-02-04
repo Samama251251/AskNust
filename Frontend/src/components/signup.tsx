@@ -12,7 +12,7 @@ const Signup = ({ onLoginSuccess }: SignupProps) => {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (password !== confirmPassword) {
       setPasswordError("Passwords do not match");
@@ -21,9 +21,29 @@ const Signup = ({ onLoginSuccess }: SignupProps) => {
       });
       return;
     }
-    // Handle signup logic here
-    // After successful signup, call onLoginSuccess
-    onLoginSuccess("dummy-token");
+    try {
+      const response = await fetch('http://localhost:8000/signup', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password, name }),
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Signup failed');
+      }
+      
+      toast.success('Signup successful!');
+      // Call onLoginSuccess with the access token from response
+      onLoginSuccess("success");
+
+    } catch (error) {
+      console.error('Signup error:', error);
+      toast.error(error instanceof Error ? error.message : 'Signup failed');
+    }
   };
 
   return (
