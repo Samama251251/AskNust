@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { toast } from "react-hot-toast";
+import { PulseLoader } from 'react-spinners';
 
 interface SignupProps {
   onLoginSuccess: (token: string) => void;
@@ -11,6 +12,7 @@ const Signup = ({ onLoginSuccess }: SignupProps) => {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,6 +23,8 @@ const Signup = ({ onLoginSuccess }: SignupProps) => {
       });
       return;
     }
+    
+    setIsLoading(true);
     try {
       const response = await fetch('http://localhost:8000/signup', {
         method: 'POST',
@@ -35,16 +39,27 @@ const Signup = ({ onLoginSuccess }: SignupProps) => {
         const errorData = await response.json();
         throw new Error(errorData.detail || 'Signup failed');
       }
-      
+
+      const data = await response.json();
       toast.success('Signup successful!');
-      // Call onLoginSuccess with the access token from response
-      onLoginSuccess("success");
+      onLoginSuccess(data.access_token);
 
     } catch (error) {
       console.error('Signup error:', error);
       toast.error(error instanceof Error ? error.message : 'Signup failed');
+    } finally {
+      setIsLoading(false);
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <PulseLoader color="#000000" size={15} margin={2} />
+        <p className="mt-4 text-gray-600">Creating your account...</p>
+      </div>
+    );
+  }
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
@@ -128,9 +143,14 @@ const Signup = ({ onLoginSuccess }: SignupProps) => {
       <div>
         <button
           type="submit"
-          className="w-full flex justify-center py-3 px-4 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all duration-300"
+          disabled={isLoading}
+          className="w-full flex justify-center py-3 px-4 border border-transparent rounded-full shadow-sm text-sm font-medium text-white bg-black hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-black transition-all duration-300 disabled:bg-gray-400 disabled:cursor-not-allowed"
         >
-          Sign Up
+          {isLoading ? (
+            <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+          ) : (
+            'Sign Up'
+          )}
         </button>
       </div>
       <div className="text-sm text-center">
