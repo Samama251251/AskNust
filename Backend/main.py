@@ -1,20 +1,46 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
 from fastapi.responses import StreamingResponse
 from langchain_mistralai import ChatMistralAI
-from langchain.schema import HumanMessage
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_pinecone import PineconeVectorStore
 import json
 import uuid
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
-load_dotenv()
+from config.database import Database
+from repositories.user_repository import UserRepository
+from models.user import UserCreate, UserResponse
 import asyncio
 from langchain.chains import create_history_aware_retriever, create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import SystemMessage
-app = FastAPI()
+from langchain_core.messages import SystemMessage, HumanMessage
+from contextlib import asynccontextmanager
+from utils.auth import create_access_token
+from fastapi import Response,status,JSONResponse
+from passlib.context import CryptContext
+load_dotenv()
+
+# Global variable for repository
+user_repository = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("Starting up...")
+    await Database.connect_db()
+    
+    # Initialize repositories after database connection
+    global user_repository
+    user_repository = UserRepository()
+    
+    yield
+    
+    # Shutdown
+    print("Shutting down...")
+    await Database.close_db()
+
+app = FastAPI(lifespan=lifespan)
 
 # Update CORS middleware with more specific settings
 app.add_middleware(
@@ -25,16 +51,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize RAG components
 embeddings = OpenAIEmbeddings()
-# Initialize Pinecone
 vectorstore = PineconeVectorStore(
-    
-        index_name="asknust",
-        embedding=embeddings
-    )
-
-# Initialize embeddings and vector store
-
+    index_name="asknust",
+    embedding=embeddings
+)
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Initialize chat model
 # chat_model = ChatMistralAI(
@@ -48,6 +71,7 @@ llm = ChatOpenAI(model="gpt-4o-mini", streaming=True)
 # small_llm = ChatMistralAI("mistral-small-latest", 
 #     api_key="3in4IBXCqcSR34YCoHXItT10ae8lrEJE"
 #  )
+
 # Contextualize question prompt
 contextualize_q_system_prompt = (
     "Given a chat history and the latest user question "
@@ -145,6 +169,26 @@ async def test_chat(prompt: str, chat_history: list = []):
         return result["answer"]
     except Exception as e:
         return f"Error: {str(e)}"
+def verify_password(plain_password: str, hashed_password: str) -> bool:
+    """
+    Verify a plain password against a hashed password
+    Args:
+        plain_password (str): The password in plain text
+        hashed_password (str): The hashed password to compare against
+    Returns:
+        bool: True if passwords match, False otherwise
+    """
+    return pwd_context.verify(plain_password, hashed_password)
+
+def get_password_hash(password: str) -> str:
+    """
+    Hash a password
+    Args:
+        password (str): The plain text password to hash
+    Returns:
+        str: The hashed password
+    """
+    return pwd_context.hash(password)
 
 async def main():
     # Create dummy chat history with university-related questions
@@ -161,26 +205,78 @@ async def main():
     response = await test_chat(question, chat_history)
     print(f"AI: {response}")
 
+# Modify the chat_stream endpoint to handle chat history
+@app.get("/chat-stream")
+async def chat_stream(prompt: str = None, chat_history: str = "[]"):
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt parameter is required")
+    
+    try:
+        history_list = json.loads(chat_history)
+        formatted_history = [
+            HumanMessage(content=msg["content"]) if msg["role"] == "user" 
+            else SystemMessage(content=msg["content"])
+            for msg in history_list
+        ]
+    except json.JSONDecodeError:
+        formatted_history = []
+    
+    return StreamingResponse(
+        langchain_generator(prompt, formatted_history),
+        media_type="text/event-stream",
+    )
+
+# User authentication endpoints
+@app.post("/signup", response_model=UserResponse)
+async def signup(user: UserCreate):
+    if user_repository is None:
+        raise HTTPException(status_code=500, detail="Repository not initialized")
+    existing_user = await user_repository.get_user_by_email(user.email)
+    if existing_user:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    created_user = await user_repository.create_user(user)
+    jwt_token = create_access_token({"email":created_user.email})
+    return Response(
+        status_code=status.HTTP_201_CREATED,
+        content=json.dumps({
+            "message": "User created successfully",
+            "user": {
+                "id": str(created_user.id),
+                "email": created_user.email,
+                "name": created_user.name,
+            },
+            "access_token": jwt_token,
+        }),
+        media_type="application/json"
+    )
+
+@app.post("/login")
+async def login(email: str, password: str):
+    user = await user_repository.get_user_by_email(email)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    if not verify_password(password, user.hashed_password):
+        raise HTTPException(status_code=401, detail="Incorrect password")
+        
+    # Generate JWT token
+    access_token = create_access_token({"email": user.email})
+    
+    # Set cookies with tokens
+    response = JSONResponse(content={"message": "Login successful"})
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=True,
+        samesite="lax",
+        max_age=3600  # 1 hour
+    )
+    return response
+
 if __name__ == "__main__":
     asyncio.run(main())
 
-# # Modify the chat_stream endpoint to handle chat history
-# @app.get("/chat-stream")
-# async def chat_stream(prompt: str = None, chat_history: str = "[]"):
-#     if not prompt:
-#         raise HTTPException(status_code=400, detail="Prompt parameter is required")
+
     
-#     try:
-#         history_list = json.loads(chat_history)
-#         formatted_history = [
-#             HumanMessage(content=msg["content"]) if msg["role"] == "user" 
-#             else SystemMessage(content=msg["content"])
-#             for msg in history_list
-#         ]
-#     except json.JSONDecodeError:
-#         formatted_history = []
-    
-#     return StreamingResponse(
-#         langchain_generator(prompt, formatted_history),
-#         media_type="text/event-stream",
-#     )
