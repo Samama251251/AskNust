@@ -20,6 +20,7 @@ from utils.auth import create_access_token
 from fastapi import Response,status
 from passlib.context import CryptContext
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 load_dotenv()
 
@@ -253,20 +254,25 @@ async def signup(user: UserCreate):
         media_type="application/json"
     )
 
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
 @app.post("/login")
-async def login(email: str, password: str):
-    user = await user_repository.get_user_by_email(email)
+async def login(request: LoginRequest):
+    user = await user_repository.get_user_by_email(request.email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    if not verify_password(password, user.hashed_password):
+    if not verify_password(request.password, user.hashed_password):
         raise HTTPException(status_code=401, detail="Incorrect password")
-        
+    
     # Generate JWT token
     access_token = create_access_token({"email": user.email})
     
     # Set cookies with tokens
     response = JSONResponse(content={"message": "Login successful"})
+    
     response.set_cookie(
         key="access_token",
         value=access_token,
