@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Depends
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
 from langchain_mistralai import ChatMistralAI
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -21,8 +21,12 @@ from fastapi import Response,status
 from passlib.context import CryptContext
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
-
+from jose import JWTError, jwt
 load_dotenv()
+SECRET_KEY = "your-secret-key-here"
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 30
+REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 # Global variable for repository
 user_repository = None
@@ -282,6 +286,30 @@ async def login(request: LoginRequest):
         max_age=3600  # 1 hour
     )
     return response
+
+@app.post('/auth')
+async def verify_auth(request: Request):
+    try:
+        # Get token from cookie
+        token = request.cookies.get("access_token")
+        if not token:
+            return JSONResponse(content={"isAuthenticated": False})
+            
+        # Verify token
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        email = payload.get("email")
+        if not email:
+            return JSONResponse(content={"isAuthenticated": False})
+            
+        # Check if user exists
+        user = await user_repository.get_user_by_email(email)
+        if not user:
+            return JSONResponse(content={"isAuthenticated": False})
+            
+        return JSONResponse(content={"isAuthenticated": True})
+        
+    except jwt.JWTError:
+        return JSONResponse(content={"isAuthenticated": False})
 
 if __name__ == "__main__":
     asyncio.run(main())

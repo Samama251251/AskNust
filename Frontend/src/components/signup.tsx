@@ -1,9 +1,11 @@
-import React from "react";
-import { useState } from "react";
+import React, { useState } from "react";
 import { toast } from "react-hot-toast";
 
+interface SignupProps {
+  onLoginSuccess: (token: string) => void;
+}
 
-const Signup = () => {
+const Signup = ({ onLoginSuccess }: SignupProps) => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -12,15 +14,16 @@ const Signup = () => {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("I am here")
     if (password !== confirmPassword) {
-      console.log("I am here 2nd time")
       setPasswordError("Passwords do not match");
       toast.error("Passwords do not match. Please try again.", {
         duration: 3000,
       });
       return;
     }
+    // Handle signup logic here
+    // After successful signup, call onLoginSuccess
+    onLoginSuccess("dummy-token");
   };
 
   return (

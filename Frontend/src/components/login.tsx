@@ -1,13 +1,37 @@
 import React, { useState } from 'react';
 
-const Login = () => {
+interface LoginProps {
+  onLoginSuccess: (token: string) => void;
+}
+
+const Login = ({ onLoginSuccess }: LoginProps) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Handle login logic here
-    console.log('Login:', { email, password });
+    try {
+      const response = await fetch('http://localhost:8000/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+        credentials: 'include',
+      });
+      console.log("I am being called")
+
+      if (!response.ok) {
+        console.log(" I am here")
+        throw new Error('Login failed');
+      }
+
+      // Remove the navigation from here and just call onLoginSuccess
+      onLoginSuccess("success");
+      
+    } catch (error) {
+      console.error('Login error:', error);
+    }
   };
 
   return (

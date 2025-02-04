@@ -36,8 +36,6 @@ const ChatInterface: React.FC = () => {
       }
       setChatHistory(chatHistory.map((chat) => (chat.id === activeChat.id ? updatedChat : chat)))
       setActiveChat(updatedChat)
-
-      // Simulate bot response
       setTimeout(() => {
         const botResponse: Message = { text: "This is a simulated response.", sender: "bot" }
         const updatedChatWithResponse: Chat = {

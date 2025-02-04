@@ -3,8 +3,21 @@ import Login from "./login"
 import Signup from "./signup"
 import { Toaster } from 'react-hot-toast'
 
-const Auth = () => {
+interface AuthProps {
+  onAuthentication: () => void;
+}
+
+const Auth = ({ onAuthentication }: AuthProps) => {
   const [activeTab, setActiveTab] = useState("login")
+
+  const handleLoginSuccess = (token: string) => {
+    // Save token to localStorage
+    localStorage.setItem('token', token)
+    console.log("Token saved, updating authentication state")
+    // Update the authentication state in App.tsx
+    onAuthentication()
+    // The navigation will now happen automatically due to the route configuration
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-100 to-gray-200 py-12 px-4 sm:px-6 lg:px-8">
@@ -35,7 +48,7 @@ const Auth = () => {
               </button>
             </div>
           </div>
-          {activeTab === "login" ? <Login /> : <Signup />}
+          {activeTab === "login" ? <Login onLoginSuccess={handleLoginSuccess} /> : <Signup onLoginSuccess={handleLoginSuccess} />}
         </div>
       </div>
     </div>
