@@ -167,7 +167,6 @@ async def test_chat(prompt: str, chat_history: list = []):
         print("this is before returning\n")
         print(result)
         print()
-        # print("Regenarated Question",{retriever_output})
         return result["answer"]
     except Exception as e:
         return f"Error: {str(e)}"
