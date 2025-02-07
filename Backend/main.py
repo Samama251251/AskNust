@@ -66,12 +66,7 @@ vectorstore = PineconeVectorStore(
 )
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
-# Initialize chat model
-# chat_model = ChatMistralAI(
-#     model="mistral-small-latest", 
-#     streaming=True,
-#     api_key="3in4IBXCqcSR34YCoHXItT10ae8lrEJE"
-# )
+
 chat_model = ChatOpenAI(model="gpt-4o-mini",streaming=True)
 # Initialize chat model and retriever components
 llm = ChatOpenAI(model="gpt-4o-mini", streaming=True)

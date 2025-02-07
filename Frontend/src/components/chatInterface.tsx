@@ -36,15 +36,42 @@ const ChatInterface: React.FC = () => {
       }
       setChatHistory(chatHistory.map((chat) => (chat.id === activeChat.id ? updatedChat : chat)))
       setActiveChat(updatedChat)
-      setTimeout(() => {
-        const botResponse: Message = { text: "This is a simulated response.", sender: "bot" }
-        const updatedChatWithResponse: Chat = {
-          ...updatedChat,
-          messages: [...updatedChat.messages, botResponse],
+      
+      // Connect to SSE endpoint
+      const eventSource = new EventSource('http://localhost:8080/chat');
+      
+      // Handle incoming message chunks
+      eventSource.onmessage = (event) => {
+        const botResponse: Message = { 
+          text: event.data, 
+          sender: "bot" 
         }
-        setChatHistory(chatHistory.map((chat) => (chat.id === activeChat.id ? updatedChatWithResponse : chat)))
-        setActiveChat(updatedChatWithResponse)
-      }, 1000)
+        
+        setActiveChat(prevChat => {
+          if (!prevChat) return null;
+          const updatedChatWithResponse = {
+            ...prevChat,
+            messages: [...prevChat.messages, botResponse],
+          }
+          setChatHistory(prev => 
+            prev.map(chat => 
+              chat.id === prevChat.id ? updatedChatWithResponse : chat
+            )
+          )
+          return updatedChatWithResponse;
+        })
+      };
+
+      // Handle any errors
+      eventSource.onerror = (error) => {
+        console.error('SSE Error:', error);
+        eventSource.close();
+      };
+
+      // Clean up the connection when component unmounts
+      return () => {
+        eventSource.close();
+      };
     }
   }
 
