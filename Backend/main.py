@@ -71,10 +71,11 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 chat_model = ChatOpenAI(model="gpt-4o-mini",streaming=True)
 # Initialize chat model and retriever components
-llm = ChatOpenAI(model="gpt-4o-mini", streaming=True)
-# small_llm = ChatMistralAI("mistral-small-latest", 
-#     api_key="3in4IBXCqcSR34YCoHXItT10ae8lrEJE"
-#  )
+# llm = ChatOpenAI(model="gpt-4o-mini", streaming=True)
+small_llm = ChatMistralAI(model_name="mistral-small-latest", 
+    api_key="3in4IBXCqcSR34YCoHXItT10ae8lrEJE",
+    streaming=True,
+ )
 
 # Contextualize question prompt
 contextualize_q_system_prompt = (
@@ -101,7 +102,7 @@ retriever = vectorstore.as_retriever(
 
 # Create history-aware retriever
 history_aware_retriever = create_history_aware_retriever(
-    llm, retriever, contextualize_q_prompt
+    small_llm, retriever, contextualize_q_prompt
 )
 
 # Create QA prompt
@@ -123,7 +124,7 @@ qa_prompt = ChatPromptTemplate.from_messages(
 )
 
 # Create the chain
-question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
+question_answer_chain = create_stuff_documents_chain(chat_model, qa_prompt)
 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 async def langchain_generator(user_prompt: str, chat_history=[]):
     try:
@@ -133,7 +134,8 @@ async def langchain_generator(user_prompt: str, chat_history=[]):
             {"input": user_prompt, "chat_history": chat_history},
             version="v1"
         ):
-            if event["event"] == "on_chat_model_stream":
+            # Check if the event is from ChatOpenAI
+            if event["name"] == "ChatOpenAI" and event["event"] == "on_chat_model_stream":
                 content = event["data"]["chunk"].content
                 message = {
                     "id": message_id,
@@ -141,7 +143,7 @@ async def langchain_generator(user_prompt: str, chat_history=[]):
                     "content": content
                 }
                 yield f"data: {json.dumps(message)}\n\n"
-                await asyncio.sleep(0.02)  # Reduced delay for faster streaming
+                await asyncio.sleep(0.02)
         
     except Exception as e:
         error_message = {
