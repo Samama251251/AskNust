@@ -7,13 +7,11 @@ interface Message {
 }
 
 interface Chat {
-  id: number
-  title: string
   messages: Message[]
 }
 
 interface ChatWindowProps {
-  activeChat: Chat | null
+  chat: Chat
   onSendMessage: (message: string) => void
 }
 
@@ -24,7 +22,7 @@ const suggestedQuestions: string[] = [
   "What are the applications of computer vision?",
 ]
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ activeChat, onSendMessage }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ chat, onSendMessage }) => {
   const [message, setMessage] = useState<string>("")
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -36,10 +34,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ activeChat, onSendMessage }) =>
   }
 
   return (
-    <div className="flex-1 flex flex-col bg-gray-50">
+    <div className="flex-1 flex flex-col h-full bg-gray-50">
       <div className="flex-1 overflow-y-auto p-4">
-        {activeChat ? (
-          activeChat.messages.map((msg, index) => (
+        {chat.messages.length > 0 ? (
+          chat.messages.map((msg, index) => (
             <div key={index} className={`mb-4 ${msg.sender === "user" ? "text-right" : "text-left"}`}>
               <div
                 className={`inline-block p-3 rounded-lg ${
@@ -53,7 +51,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ activeChat, onSendMessage }) =>
         ) : (
           <div className="h-full flex flex-col items-center justify-center">
             <h2 className="text-2xl font-bold mb-4">Welcome to Chatbot</h2>
-            <p className="text-gray-600 mb-6">Start a new chat or try one of these suggested questions:</p>
+            <p className="text-gray-600 mb-6">Try one of these suggested questions:</p>
             <div className="space-y-2">
               {suggestedQuestions.map((question, index) => (
                 <button

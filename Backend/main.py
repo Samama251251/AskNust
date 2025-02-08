@@ -52,7 +52,7 @@ app = FastAPI(lifespan=lifespan)
 # Update CORS middleware with more specific settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Your React app's URL
+    allow_origins=["*"],  # Allow all origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -124,22 +124,24 @@ qa_prompt = ChatPromptTemplate.from_messages(
 question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 
-# Modify the langchain_generator function
 async def langchain_generator(user_prompt: str, chat_history=[]):
     try:
-        # Use the RAG chain instead of direct retrieval
-        result = await rag_chain.ainvoke({
-            "input": user_prompt,
-            "chat_history": chat_history
-        })
-        
         message_id = str(uuid.uuid4())
-        message = {
-            "id": message_id,
-            "role": "assistant",
-            "content": result["answer"]
-        }
-        yield f"data: {json.dumps(message)}\n\n"
+        
+        # Simulate streaming by yielding chunks
+        async for event in rag_chain.astream_events(
+            {"input": user_prompt, "chat_history": chat_history},
+            version="v1"
+        ):
+            if event["event"] == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
+                message = {
+                    "id": message_id,
+                    "role": "assistant",
+                    "content": content
+                }
+                yield f"data: {json.dumps(message)}\n\n"
+                await asyncio.sleep(0.1)  # Ensure this delay is present for streaming effect
         
     except Exception as e:
         error_message = {
@@ -209,6 +211,14 @@ async def main():
 # Modify the chat_stream endpoint to handle chat history
 @app.get("/chat-stream")
 async def chat_stream(prompt: str = None, chat_history: str = "[]"):
+    print("Received streaming request")
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*"
+    }
+    
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt parameter is required")
     
@@ -219,13 +229,15 @@ async def chat_stream(prompt: str = None, chat_history: str = "[]"):
             else SystemMessage(content=msg["content"])
             for msg in history_list
         ]
-    except json.JSONDecodeError:
-        formatted_history = []
-    
-    return StreamingResponse(
-        langchain_generator(prompt, formatted_history),
-        media_type="text/event-stream",
-    )
+        
+        return StreamingResponse(
+            langchain_generator(prompt, formatted_history),
+            media_type="text/event-stream",
+            headers=headers
+        )
+    except Exception as e:
+        print(f"Error in chat_stream: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # User authentication endpoints
 @app.post("/signup", response_model=UserResponse)

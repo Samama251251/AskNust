@@ -1,6 +1,5 @@
 import type React from "react"
 import { useState } from "react"
-import Sidebar from "./sidebar"
 import ChatWindow from "./chatwindow"
 
 interface Message {
@@ -9,81 +8,79 @@ interface Message {
 }
 
 interface Chat {
-  id: number
-  title: string
   messages: Message[]
 }
 
 const ChatInterface: React.FC = () => {
-  const [activeChat, setActiveChat] = useState<Chat | null>(null)
-  const [chatHistory, setChatHistory] = useState<Chat[]>([])
-
-  const handleNewChat = () => {
-    const newChat: Chat = {
-      id: Date.now(),
-      title: "New Chat",
-      messages: [],
-    }
-    setChatHistory([newChat, ...chatHistory])
-    setActiveChat(newChat)
-  }
+  const [chat, setChat] = useState<Chat>({ messages: [] })
 
   const handleSendMessage = (message: string) => {
-    if (activeChat) {
-      const updatedChat: Chat = {
-        ...activeChat,
-        messages: [...activeChat.messages, { text: message, sender: "user" }],
-      }
-      setChatHistory(chatHistory.map((chat) => (chat.id === activeChat.id ? updatedChat : chat)))
-      setActiveChat(updatedChat)
+    const updatedChat: Chat = {
+      messages: [...chat.messages, { text: message, sender: "user" }],
+    }
+  
+    setChat(updatedChat);
+  
+    try {
+      const chatHistoryString = JSON.stringify(
+        updatedChat.messages.map(msg => ({
+          content: msg.text,
+          role: msg.sender === 'user' ? 'user' : 'assistant'
+        }))
+      );
+  
+      const url = new URL('http://localhost:8000/chat-stream');
+      url.searchParams.append('prompt', message);
+      url.searchParams.append('chat_history', chatHistoryString);
       
-      // Connect to SSE endpoint
-      const eventSource = new EventSource('http://localhost:8080/chat');
+      const eventSource = new EventSource(url.toString());
       
-      // Handle incoming message chunks
+      setChat(prevChat => ({
+        messages: [
+          ...prevChat.messages,
+          { text: '', sender: 'bot' }
+        ]
+      }));
+  
       eventSource.onmessage = (event) => {
-        const botResponse: Message = { 
-          text: event.data, 
-          sender: "bot" 
-        }
-        
-        setActiveChat(prevChat => {
-          if (!prevChat) return null;
-          const updatedChatWithResponse = {
-            ...prevChat,
-            messages: [...prevChat.messages, botResponse],
+        try {
+          console.log("I am being abused")
+          const parsedData = JSON.parse(event.data);
+          if (parsedData.content) {
+            setChat(prevChat => {
+              const messages = [...prevChat.messages];
+              const lastMessage = messages[messages.length - 1];
+              if (lastMessage && lastMessage.sender === 'bot') {
+                messages[messages.length - 1] = {
+                  ...lastMessage,
+                  text: lastMessage.text + parsedData.content
+                };
+              }
+              return { messages };
+            });
           }
-          setChatHistory(prev => 
-            prev.map(chat => 
-              chat.id === prevChat.id ? updatedChatWithResponse : chat
-            )
-          )
-          return updatedChatWithResponse;
-        })
+        } catch (error) {
+          console.error('Error parsing SSE data:', error);
+        }
       };
-
-      // Handle any errors
+  
       eventSource.onerror = (error) => {
         console.error('SSE Error:', error);
         eventSource.close();
       };
-
-      // Clean up the connection when component unmounts
+  
       return () => {
         eventSource.close();
       };
+  
+    } catch (error) {
+      console.error('Error setting up SSE:', error);
     }
   }
 
   return (
-    <div className="flex h-screen bg-gray-100">
-      <Sidebar
-        chatHistory={chatHistory}
-        activeChat={activeChat}
-        onSelectChat={setActiveChat}
-        onNewChat={handleNewChat}
-      />
-      <ChatWindow activeChat={activeChat} onSendMessage={handleSendMessage} />
+    <div className="h-screen bg-gray-100">
+      <ChatWindow chat={chat} onSendMessage={handleSendMessage} />
     </div>
   )
 }
