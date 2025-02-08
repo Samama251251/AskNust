@@ -22,6 +22,8 @@ from passlib.context import CryptContext
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 from jose import JWTError, jwt
+import logging
+
 load_dotenv()
 SECRET_KEY = "your-secret-key-here"
 ALGORITHM = "HS256"
@@ -52,7 +54,7 @@ app = FastAPI(lifespan=lifespan)
 # Update CORS middleware with more specific settings
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins
+    allow_origins=["http://localhost:5173"],  # Replace with your frontend URL
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -123,27 +125,38 @@ qa_prompt = ChatPromptTemplate.from_messages(
 # Create the chain
 question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-
 async def langchain_generator(user_prompt: str, chat_history=[]):
+    """
+    Generator that yields server-sent events (SSE) with streaming data.
+    """
+    message_id = str(uuid.uuid4())
     try:
-        message_id = str(uuid.uuid4())
-        
-        # Simulate streaming by yielding chunks
+        # Iterate over streaming events from your chain
         async for event in rag_chain.astream_events(
             {"input": user_prompt, "chat_history": chat_history},
             version="v1"
         ):
-            if event["event"] == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
+            logging.debug(f"Received event: {event}")
+            if event.get("event") == "on_chat_model_stream":
+                # Adjust extraction of content depending on your event structure.
+                chunk = event["data"].get("chunk")
+                if hasattr(chunk, "content"):
+                    content = chunk.content
+                else:
+                    content = chunk
+
                 message = {
                     "id": message_id,
                     "role": "assistant",
                     "content": content
                 }
+                # Yield SSE-formatted message with two newline characters
                 yield f"data: {json.dumps(message)}\n\n"
-                await asyncio.sleep(0.1)  # Ensure this delay is present for streaming effect
-        
+                # A short sleep to simulate streaming and to allow the client to process each chunk.
+                await asyncio.sleep(0.1)
+
     except Exception as e:
+        logging.exception("Error in langchain_generator:")
         error_message = {
             "id": str(uuid.uuid4()),
             "role": "assistant",
@@ -208,35 +221,43 @@ async def main():
     response = await test_chat(question, chat_history)
     print(f"AI: {response}")
 
-# Modify the chat_stream endpoint to handle chat history
+
 @app.get("/chat-stream")
 async def chat_stream(prompt: str = None, chat_history: str = "[]"):
-    print("Received streaming request")
+    """
+    Endpoint to stream chat responses using SSE.
+    Expects:
+      - prompt: a string provided via query parameters.
+      - chat_history: a JSON string representing the previous conversation.
+    """
+    logging.info("Received streaming request for chat-stream")
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "Access-Control-Allow-Origin": "*"
     }
-    
+
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt parameter is required")
-    
+
     try:
+        # Parse and format the chat history
         history_list = json.loads(chat_history)
         formatted_history = [
-            HumanMessage(content=msg["content"]) if msg["role"] == "user" 
+            HumanMessage(content=msg["content"]) if msg["role"] == "user"
             else SystemMessage(content=msg["content"])
             for msg in history_list
         ]
-        
+
         return StreamingResponse(
             langchain_generator(prompt, formatted_history),
             media_type="text/event-stream",
             headers=headers
         )
+
     except Exception as e:
-        print(f"Error in chat_stream: {str(e)}")
+        logging.exception("Error in chat_stream endpoint:")
         raise HTTPException(status_code=500, detail=str(e))
 
 # User authentication endpoints
@@ -316,6 +337,18 @@ async def verify_auth(request: Request):
         
     except jwt.JWTError:
         return JSONResponse(content={"isAuthenticated": False})
+@app.get("/test-stream")
+async def test_stream():
+    async def simple_generator():
+        for i in range(5):
+            # Each message is yielded with the proper SSE format
+            message = {"id": str(uuid.uuid4()), "role": "assistant", "content": f"Test message {i}"}
+            yield f"data: {json.dumps(message)}\n\n"
+            await asyncio.sleep(1)  # Delay to simulate a stream
+    return StreamingResponse(
+        simple_generator(),
+        media_type="text/event-stream"
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
