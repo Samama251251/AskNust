@@ -126,44 +126,30 @@ qa_prompt = ChatPromptTemplate.from_messages(
 question_answer_chain = create_stuff_documents_chain(llm, qa_prompt)
 rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
 async def langchain_generator(user_prompt: str, chat_history=[]):
-    """
-    Generator that yields server-sent events (SSE) with streaming data.
-    """
-    message_id = str(uuid.uuid4())
     try:
-        # Iterate over streaming events from your chain
+        message_id = str(uuid.uuid4())
+        
         async for event in rag_chain.astream_events(
             {"input": user_prompt, "chat_history": chat_history},
             version="v1"
         ):
-            logging.debug(f"Received event: {event}")
-            if event.get("event") == "on_chat_model_stream":
-                # Adjust extraction of content depending on your event structure.
-                chunk = event["data"].get("chunk")
-                if hasattr(chunk, "content"):
-                    content = chunk.content
-                else:
-                    content = chunk
-
+            if event["event"] == "on_chat_model_stream":
+                content = event["data"]["chunk"].content
                 message = {
                     "id": message_id,
                     "role": "assistant",
                     "content": content
                 }
-                # Yield SSE-formatted message with two newline characters
                 yield f"data: {json.dumps(message)}\n\n"
-                # A short sleep to simulate streaming and to allow the client to process each chunk.
-                await asyncio.sleep(0.1)
-
+                await asyncio.sleep(0.02)  # Reduced delay for faster streaming
+        
     except Exception as e:
-        logging.exception("Error in langchain_generator:")
         error_message = {
             "id": str(uuid.uuid4()),
             "role": "assistant",
             "content": f"Error: {str(e)}"
         }
         yield f"data: {json.dumps(error_message)}\n\n"
-
 # Test function that doesn't require server/streaming
 async def test_chat(prompt: str, chat_history: list = []):
     """
