@@ -60,7 +60,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize RAG components
 embeddings = OpenAIEmbeddings()
 vectorstore = PineconeVectorStore(
     index_name="asknust",
@@ -173,6 +172,7 @@ async def test_chat(prompt: str, chat_history: list = []):
         return result["answer"]
     except Exception as e:
         return f"Error: {str(e)}"
+
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
     Verify a plain password against a hashed password

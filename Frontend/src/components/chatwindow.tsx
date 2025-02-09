@@ -1,5 +1,5 @@
-import type React from "react"
-import { useState } from "react"
+import React, { useState } from "react"
+import ReactMarkdown from "react-markdown"
 
 interface Message {
   text: string
@@ -44,7 +44,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chat, onSendMessage }) => {
                   msg.sender === "user" ? "bg-black text-white" : "bg-white text-gray-800 shadow"
                 }`}
               >
-                {msg.text}
+                <ReactMarkdown>{msg.text}</ReactMarkdown>
               </div>
             </div>
           ))
