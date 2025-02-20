@@ -1,32 +1,26 @@
 from fastapi import FastAPI, HTTPException, Depends, Request
-from fastapi.responses import StreamingResponse
-from langchain_mistralai import ChatMistralAI
-from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain_pinecone import PineconeVectorStore
+from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 import json
 import uuid
-from fastapi.middleware.cors import CORSMiddleware
+import asyncio
+import logging
+from typing import List
+from pydantic import BaseModel
+from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from config.database import Database
 from repositories.user_repository import UserRepository
 from models.user import UserCreate, UserResponse
-import asyncio
-from langchain.chains import create_history_aware_retriever, create_retrieval_chain
-from langchain.chains.combine_documents import create_stuff_documents_chain
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import SystemMessage, HumanMessage
-from contextlib import asynccontextmanager
-from utils.auth import create_access_token
-from fastapi import Response,status
+from fastapi import Response, status
 from passlib.context import CryptContext
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 from jose import JWTError, jwt
-from langchain_google_genai import ChatGoogleGenerativeAI
-import logging
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
+from utils.auth import create_access_token
+from crawl4ai import AsyncWebCrawler, CrawlerRunConfig
 import google.generativeai as genai
-from finalscrap import UniversityChatbot
+from googlesearch import search
+import time
+
 load_dotenv()
 SECRET_KEY = "your-secret-key-here"
 ALGORITHM = "HS256"
@@ -48,7 +42,8 @@ async def lifespan(app: FastAPI):
     # Initialize repositories and chatbot
     global user_repository, chatbot
     user_repository = UserRepository()
-    chatbot = UniversityChatbot("AIzaSyCcZp2pD7_zlhwJl9nHGPBI-8YQOSSCFsA")
+    genai.configure(api_key="AIzaSyCcZp2pD7_zlhwJl9nHGPBI-8YQOSSCFsA")
+    chatbot = AsyncWebCrawler()
     await chatbot.__aenter__()
     
     yield
@@ -70,90 +65,91 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-embeddings = OpenAIEmbeddings()
-vectorstore = PineconeVectorStore(
-    index_name="asknust",
-    embedding=embeddings
-)
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+def search_google(query: str, num_results: int = 3) -> List[str]:
+    """Search Google and return the top URLs."""
+    urls = []
+    try:
+        search_results = search(query, num_results=num_results)
+        urls = list(search_results)
+        time.sleep(0.2)  # Add delay between searches
+    except Exception as e:
+        print(f"Error during Google search: {e}")
+    return urls
 
-chat_model = ChatGoogleGenerativeAI(model="Gemini 2.0 Flash-Lite Preview 02-05",streaming=True, api_key="AIzaSyCcZp2pD7_zlhwJl9nHGPBI-8YQOSSCFsA")
-# Initialize chat model and retriever components
-# llm = ChatOpenAI(model="gpt-4o-mini", streaming=True)
-small_llm = ChatMistralAI(model_name="mistral-small-latest", 
-    api_key="3in4IBXCqcSR34YCoHXItT10ae8lrEJE",
-    streaming=True,
- )
-
-# Contextualize question prompt
-contextualize_q_system_prompt = (
-    "Given a chat history and the latest user question "
-    "which might reference context in the chat history, "
-    "formulate a standalone question which can be understood "
-    "without the chat history. Do NOT answer the question, just "
-    "reformulate it if needed and otherwise return it but make sure the question does not contain the word Nust in either case"
-)
-
-contextualize_q_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", contextualize_q_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ]
-)
-
-# Create retriever from vectorstore
-retriever = vectorstore.as_retriever(
-    search_type="similarity",
-    search_kwargs={"k": 3}
-)
-
-# Create history-aware retriever
-history_aware_retriever = create_history_aware_retriever(
-    small_llm, retriever, contextualize_q_prompt
-)
-
-# Create QA prompt
-qa_system_prompt = (
-    "You are an assistant for question-answering tasks. Use "
-    "the following pieces of retrieved context to answer the "
-    "question. If you don't know the answer, just say that you "
-    "don't know."
-    "\n\n"
-    "{context}"
-)
-
-qa_prompt = ChatPromptTemplate.from_messages(
-    [
-        ("system", qa_system_prompt),
-        MessagesPlaceholder("chat_history"),
-        ("human", "{input}"),
-    ]
-)
-
-# Create the chain
-question_answer_chain = create_stuff_documents_chain(chat_model, qa_prompt)
-rag_chain = create_retrieval_chain(history_aware_retriever, question_answer_chain)
-async def langchain_generator(user_prompt: str, chat_history=[]):
+async def generate_streaming_response(prompt: str):
+    """Generate streaming response using web scraping and Gemini."""
     try:
         message_id = str(uuid.uuid4())
-        logging.debug("I came here")
-        async for event in rag_chain.astream_events(
-            {"input": user_prompt, "chat_history": chat_history},
-            version="v1"
-        ):
-            # Check if the event is from ChatOpenAI
-            if event["name"] == "ChatOpenAI" and event["event"] == "on_chat_model_stream":
-                content = event["data"]["chunk"].content
+        model = genai.GenerativeModel('gemini-2.0-flash-lite-preview-02-05')
+        
+        # Initial processing message
+        processing_message = {
+            "id": message_id,
+            "role": "assistant",
+            "content": ""
+        }
+        yield f"data: {json.dumps(processing_message)}\n\n"
+        
+        # Search Google and get URLs
+        urls = search_google(prompt)
+        context_parts = []
+        
+        # Scrape each URL
+        for url in urls:
+            try:
+                run_cfg = CrawlerRunConfig(only_text=True)
+                result = await chatbot.arun(url=url, config=run_cfg)
+                if result and result.markdown_v2:
+                    context_parts.append(f"Source ({url}):\n{result.markdown_v2}\n")
+            except Exception as e:
+                print(f"Error scraping {url}: {e}")
+                continue
+        
+        # Combine all context
+        context = "\n".join(context_parts)
+        
+        # Generate response
+        prompt_template = f"""**System Instructions**:
+You are a helpful university chatbot. Use the provided context to answer questions.
+If the context doesn't contain relevant information, say I do not have enough information to answer this question
+do not provide any citations 
+**Context**:
+{context}
+
+**Question**:
+{prompt}
+
+Please provide a helpful response using the above context and your knowledge."""
+
+        response = await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: model.generate_content(prompt_template)
+        )
+        
+        if response.text:
+            # Stream the response in chunks
+            chunk_size = 100
+            text = response.text
+            chunks = [text[i:i + chunk_size] for i in range(0, len(text), chunk_size)]
+            
+            for chunk in chunks:
                 message = {
                     "id": message_id,
                     "role": "assistant",
-                    "content": content
+                    "content": chunk
                 }
                 yield f"data: {json.dumps(message)}\n\n"
                 await asyncio.sleep(0.02)
-        
+        else:
+            error_message = {
+                "id": message_id,
+                "role": "assistant",
+                "content": "Sorry, I couldn't generate a response."
+            }
+            yield f"data: {json.dumps(error_message)}\n\n"
+            
     except Exception as e:
         error_message = {
             "id": str(uuid.uuid4()),
@@ -161,27 +157,27 @@ async def langchain_generator(user_prompt: str, chat_history=[]):
             "content": f"Error: {str(e)}"
         }
         yield f"data: {json.dumps(error_message)}\n\n"
-# Test function that doesn't require server/streaming
-async def test_chat(prompt: str, chat_history: list = []):
+
+@app.get("/chat-stream")
+async def chat_stream(prompt: str = None):
     """
-    Test the RAG chain directly without server/streaming
-    Args:
-        prompt (str): User's question
-        chat_history (list): List of previous messages
-    Returns:
-        str: Assistant's response
+    Endpoint to stream chat responses using web scraping and Gemini.
     """
-    try:
-        result = await rag_chain.ainvoke({
-            "input": prompt,
-            "chat_history": chat_history
-        })
-        print("this is before returning\n")
-        print(result)
-        print()
-        return result["answer"]
-    except Exception as e:
-        return f"Error: {str(e)}"
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt parameter is required")
+
+    headers = {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        "Access-Control-Allow-Origin": "*"
+    }
+
+    return StreamingResponse(
+        generate_streaming_response(prompt),
+        media_type="text/event-stream",
+        headers=headers
+    )
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
     """
@@ -204,84 +200,6 @@ def get_password_hash(password: str) -> str:
     """
     return pwd_context.hash(password)
 
-async def main():
-    # Create dummy chat history with university-related questions
-    chat_history = [
-        HumanMessage(content="What does credit hour mean?"),
-        SystemMessage(content="A credit hour represents the amount of time a student is expected to spend in class and studying per week. One credit hour typically equals one hour of classroom time and two hours of out-of-class work."),
-        HumanMessage(content="How many credit hours do I need to graduate?"),
-        SystemMessage(content="Most undergraduate programs at NUST require completing 130-140 credit hours to graduate, spread across 8 semesters.")
-    ]
-    
-    # Test new question with chat history context
-    question = "How many credit hours does a software engineering student requies to graduate from Nust"
-    print(f"\nUser: {question}")
-    response = await test_chat(question, chat_history)
-    print(f"AI: {response}")
-
-
-# Update the chat_stream endpoint
-@app.get("/chat-stream")
-async def chat_stream(prompt: str = None, chat_history: str = "[]"):
-    """
-    Endpoint to stream chat responses using the UniversityChatbot.
-    """
-    logging.info("Received streaming request for chat-stream")
-    headers = {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        "Access-Control-Allow-Origin": "*"
-    }
-
-    if not prompt:
-        raise HTTPException(status_code=400, detail="Prompt parameter is required")
-
-    if not chatbot:
-        raise HTTPException(status_code=500, detail="Chatbot not initialized")
-
-    async def generate_response():
-        try:
-            message_id = str(uuid.uuid4())
-            context = await chatbot.get_context(prompt)
-            
-            # First message to indicate processing
-            processing_message = {
-                "id": message_id,
-                "role": "assistant",
-                "content": "Searching and processing your query..."
-            }
-            yield f"data: {json.dumps(processing_message)}\n\n"
-            
-            # Get the full response
-            response = await chatbot.get_response(prompt)
-            
-            # Split response into chunks for streaming
-            chunk_size = 100  # Adjust chunk size as needed
-            chunks = [response[i:i + chunk_size] for i in range(0, len(response), chunk_size)]
-            
-            for chunk in chunks:
-                message = {
-                    "id": message_id,
-                    "role": "assistant",
-                    "content": chunk
-                }
-                yield f"data: {json.dumps(message)}\n\n"
-                await asyncio.sleep(0.02)  # Add small delay between chunks
-
-        except Exception as e:
-            error_message = {
-                "id": str(uuid.uuid4()),
-                "role": "assistant",
-                "content": f"Error: {str(e)}"
-            }
-            yield f"data: {json.dumps(error_message)}\n\n"
-
-    return StreamingResponse(
-        generate_response(),
-        media_type="text/event-stream",
-        headers=headers
-    )
 
 # User authentication endpoints
 @app.post("/signup", response_model=UserResponse)
@@ -360,6 +278,7 @@ async def verify_auth(request: Request):
         
     except jwt.JWTError:
         return JSONResponse(content={"isAuthenticated": False})
+
 @app.get("/test-stream")
 async def test_stream():
     async def simple_generator():
@@ -372,8 +291,3 @@ async def test_stream():
         simple_generator(),
         media_type="text/event-stream"
     )
-
-if __name__ == "__main__":
-    asyncio.run(main())
-
-

@@ -37,9 +37,9 @@ class UniversityChatbot:
     async def scrape_webpage(self, url: str) -> str:
         """Scrape content from a webpage using crawl4ai."""
         try:
-            if "nust.edu.pk" not in url:
-                print(f"Skipping non-NUST URL: {url}")
-                return ""
+            # if "nust.edu.pk" not in url:
+            #     print(f"Skipping non-NUST URL: {url}")
+            #     return ""
                 
             if self.crawler:
                 run_cfg = CrawlerRunConfig(only_text=True)
