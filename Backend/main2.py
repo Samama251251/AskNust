@@ -24,9 +24,7 @@ from pydantic import BaseModel
 from jose import JWTError, jwt
 from langchain_google_genai import ChatGoogleGenerativeAI
 import logging
-from crawl4ai import AsyncWebCrawler, BrowserConfig, CrawlerRunConfig
-import google.generativeai as genai
-from finalscrap import UniversityChatbot
+
 load_dotenv()
 SECRET_KEY = "your-secret-key-here"
 ALGORITHM = "HS256"
@@ -36,28 +34,21 @@ REFRESH_TOKEN_EXPIRE_DAYS = 7
 # Global variable for repository
 user_repository = None
 
-# Initialize the chatbot as a global variable
-chatbot = None
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     print("Starting up...")
     await Database.connect_db()
     
-    # Initialize repositories and chatbot
-    global user_repository, chatbot
+    # Initialize repositories after database connection
+    global user_repository
     user_repository = UserRepository()
-    chatbot = UniversityChatbot("AIzaSyCcZp2pD7_zlhwJl9nHGPBI-8YQOSSCFsA")
-    await chatbot.__aenter__()
     
     yield
     
     # Shutdown
     print("Shutting down...")
     await Database.close_db()
-    if chatbot:
-        await chatbot.__aexit__(None, None, None)
 
 app = FastAPI(lifespan=lifespan)
 
@@ -220,11 +211,13 @@ async def main():
     print(f"AI: {response}")
 
 
-# Update the chat_stream endpoint
 @app.get("/chat-stream")
 async def chat_stream(prompt: str = None, chat_history: str = "[]"):
     """
-    Endpoint to stream chat responses using the UniversityChatbot.
+    Endpoint to stream chat responses using SSE.
+    Expects:
+      - prompt: a string provided via query parameters.
+      - chat_history: a JSON string representing the previous conversation.
     """
     logging.info("Received streaming request for chat-stream")
     headers = {
@@ -237,51 +230,24 @@ async def chat_stream(prompt: str = None, chat_history: str = "[]"):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt parameter is required")
 
-    if not chatbot:
-        raise HTTPException(status_code=500, detail="Chatbot not initialized")
+    try:
+        # Parse and format the chat history
+        history_list = json.loads(chat_history)
+        formatted_history = [
+            HumanMessage(content=msg["content"]) if msg["role"] == "user"
+            else SystemMessage(content=msg["content"])
+            for msg in history_list
+        ]
 
-    async def generate_response():
-        try:
-            message_id = str(uuid.uuid4())
-            context = await chatbot.get_context(prompt)
-            
-            # First message to indicate processing
-            processing_message = {
-                "id": message_id,
-                "role": "assistant",
-                "content": "Searching and processing your query..."
-            }
-            yield f"data: {json.dumps(processing_message)}\n\n"
-            
-            # Get the full response
-            response = await chatbot.get_response(prompt)
-            
-            # Split response into chunks for streaming
-            chunk_size = 100  # Adjust chunk size as needed
-            chunks = [response[i:i + chunk_size] for i in range(0, len(response), chunk_size)]
-            
-            for chunk in chunks:
-                message = {
-                    "id": message_id,
-                    "role": "assistant",
-                    "content": chunk
-                }
-                yield f"data: {json.dumps(message)}\n\n"
-                await asyncio.sleep(0.02)  # Add small delay between chunks
+        return StreamingResponse(
+            langchain_generator(prompt, formatted_history),
+            media_type="text/event-stream",
+            headers=headers
+        )
 
-        except Exception as e:
-            error_message = {
-                "id": str(uuid.uuid4()),
-                "role": "assistant",
-                "content": f"Error: {str(e)}"
-            }
-            yield f"data: {json.dumps(error_message)}\n\n"
-
-    return StreamingResponse(
-        generate_response(),
-        media_type="text/event-stream",
-        headers=headers
-    )
+    except Exception as e:
+        logging.exception("Error in chat_stream endpoint:")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # User authentication endpoints
 @app.post("/signup", response_model=UserResponse)
@@ -377,3 +343,4 @@ if __name__ == "__main__":
     asyncio.run(main())
 
 
+    

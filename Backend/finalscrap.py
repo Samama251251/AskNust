@@ -9,7 +9,7 @@ class UniversityChatbot:
     def __init__(self, api_key: str):
         """Initialize the chatbot with your Google API key."""
         genai.configure(api_key=api_key)
-        self.model = genai.GenerativeModel('gemini-1.5-flash')
+        self.model = genai.GenerativeModel('gemini-2.0-flash-lite-preview-02-05')
         self.crawler = None
         
     async def __aenter__(self):
@@ -27,7 +27,7 @@ class UniversityChatbot:
         """Search Google and return the top URLs."""
         urls = []
         try:
-            search_results = search(query, num=num_results, stop=num_results)
+            search_results = search(query, num_results =num_results)
             urls = list(search_results)
             time.sleep(0.2)  # Add delay between searches
         except Exception as e:
