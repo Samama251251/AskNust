@@ -114,14 +114,14 @@ async def generate_streaming_response(prompt: str):
         prompt_template = f"""**System Instructions**:
 You are a helpful university chatbot. Use the provided context to answer questions.
 If the context doesn't contain relevant information, say I do not have enough information to answer this question
-do not provide any citations 
+do not provide any citations . Make sure you give enough informations to help the user.
 **Context**:
 {context}
 
 **Question**:
 {prompt}
 
-Please provide a helpful response using the above context and your knowledge."""
+Please provide a helpful response using the above context and your knowledge. but in resposen do not say that based on the current context the answer is this just answer if you do not know the answer do not say that based on the current context the answer is this just answer if you do not know the answer"""
 
         response = await asyncio.get_event_loop().run_in_executor(
             None,
