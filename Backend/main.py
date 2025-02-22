@@ -106,15 +106,36 @@ async def fetch_web_content(prompt: str, chatbot: AsyncWebCrawler):
     urls = await search_google(prompt)
     context_parts = []
     for url in urls:
-        try:
-            run_cfg = CrawlerRunConfig(only_text=True)
-            result = await chatbot.arun(url=url, config=run_cfg)
-            if result and result.markdown_v2:
-                context_parts.append(f"Source ({url}):\n{result.markdown_v2}\n")
-        except Exception as e:
-            print(f"Error scraping {url}: {e}")
+        if not url:  # Skip empty URLs
             continue
+
+        # If URL is from NUST Library, use special handling.
+        if "library.nust.edu.pk" in url:
+            try:
+                # Create a separate crawler instance and initialize it.
+                specialized_crawler = AsyncWebCrawler()
+                await specialized_crawler.__aenter__()
+                # Provide custom context settings to help in creating the browser context.
+                run_cfg = CrawlerRunConfig()
+                result = await specialized_crawler.arun(url=url, config=run_cfg)
+                await specialized_crawler.__aexit__(None, None, None)
+                if result and result.markdown_v2:
+                    context_parts.append(f"Source ({url}):\n{result.markdown_v2}\n")
+            except Exception as e:
+                print(f"Error scraping {url} with special settings: {e}")
+                continue
+        else:
+            # Use the main crawler for other URLs.
+            try:
+                run_cfg = CrawlerRunConfig(only_text=True)
+                result = await chatbot.arun(url=url, config=run_cfg)
+                if result and result.markdown_v2:
+                    context_parts.append(f"Source ({url}):\n{result.markdown_v2}\n")
+            except Exception as e:
+                print(f"Error scraping {url}: {e}")
+                continue
     return "\n".join(context_parts)
+
 async def getRelevantDocs(prompt: str):
     print("I came in getRelevantDocs")
     context = ""
