@@ -1,15 +1,16 @@
 from motor.motor_asyncio import AsyncIOMotorClient
 from typing import Optional
+import os
 
 class Database:
     client: Optional[AsyncIOMotorClient] = None
-    database_name = "askNustChatbot"  # Make it a class variable
+    database_name = "askNust"  # Make it a class variable
 
     @classmethod
     async def connect_db(cls):
         try:
             # Use environment variables in production
-            MONGODB_URL = "mongodb://localhost:27017/"
+            MONGODB_URL = os.environ["DATABASE_URL"]
             cls.client = AsyncIOMotorClient(MONGODB_URL)
             
             # Verify connection

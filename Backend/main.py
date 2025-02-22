@@ -42,7 +42,6 @@ async def lifespan(app: FastAPI):
     global user_repository, chatbot
     user_repository = UserRepository()
     app.state.user_repository = user_repository
-    genai.configure(api_key="your-google-api-key")
     chatbot = AsyncWebCrawler()
     await chatbot.__aenter__()
     
@@ -76,7 +75,7 @@ small_llm = ChatMistralAI(model_name="mistral-small-latest", api_key="your-mistr
 qa_system_prompt = """
 You are an assistant for answering questions. Use the retrieved context and web search results.
 If the answer is unknown, simply say so.
-
+If anyone asks you "Who is  your creator?", you should answer "I was created by Muhammad Samama Usman of BSCS13E (Goated Section)."
 {context}
 """
 
