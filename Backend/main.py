@@ -85,10 +85,14 @@ qa_prompt = ChatPromptTemplate.from_messages([
     ("human", "{input}"),
 ])
 
-question_answer_chain = create_stuff_documents_chain(chat_model, qa_prompt)
+question_answer_chain = create_stuff_documents_chain(
+    llm=chat_model, 
+    prompt=qa_prompt,
+    document_variable_name="context"
+)
 
 # Web Scraper
-async def search_google(query: str, num_results: int = 3) -> List[str]:
+async def search_google(query: str, num_results: int = 2) -> List[str]:
     urls = []
     try:
         search_results = search(query, num_results=num_results)
@@ -120,40 +124,38 @@ async def getRelevantDocs(prompt: str):
     print("Context:", context)
     return context
 
+from langchain_core.messages import SystemMessage, HumanMessage
+
 async def langchain_generator(user_prompt: str, chatbot: AsyncWebCrawler):
     try:
         message_id = str(uuid.uuid4())
-        processing_message = {"id": message_id, "role": "assistant", "content": "s"}
-        yield f"data: {json.dumps(processing_message)}\n\n"
+        yield f"data: {json.dumps({'id': message_id, 'role': 'assistant', 'content': 'Processing...'})}\n\n"
         
-        print("I came here")
-        print(user_prompt)
+        print("Fetching context...")
         
         # Call both async tasks
-        rag_task = getRelevantDocs(user_prompt)  # Now async
+        rag_task = getRelevantDocs(user_prompt)  
         web_task = fetch_web_content(user_prompt, chatbot)
-
         retrieved_context, web_context = await asyncio.gather(rag_task, web_task)
         
-        print("I came here2")
-
-        combined_context = f"**RAG Context:**\n{retrieved_context}\n\n**Web Context:**\n{web_context}"
-        print("I came here3")
-        print("\n\n\n\n")
-        print("Web Context",web_context)
-        async for event in question_answer_chain.astream_events(
-            {"input": user_prompt, "context": combined_context}, version="v1"
-        ):
+        print("Context fetched.")
+        full_context = f"Retrieved Context:\n{retrieved_context}\n\nWeb Search Context:\n{web_context}"
+        
+        # Prepare messages as a list of BaseMessage objects
+        messages = [
+            SystemMessage(content=qa_system_prompt.format(context=full_context)),
+            HumanMessage(content=user_prompt)
+        ]
+        
+        async for event in chat_model.astream_events(messages, version="v1"):
             if event["name"] == "ChatOpenAI" and event["event"] == "on_chat_model_stream":
                 content = event["data"]["chunk"].content
-                print("I came here 4")
-                message = {"id": message_id, "role": "assistant", "content": content}
-                yield f"data: {json.dumps(message)}\n\n"
+                yield f"data: {json.dumps({'id': message_id, 'role': 'assistant', 'content': content})}\n\n"
                 await asyncio.sleep(0.02)
-
     except Exception as e:
-        error_message = {"id": str(uuid.uuid4()), "role": "assistant", "content": f"Error: {str(e)}"}
-        yield f"data: {json.dumps(error_message)}\n\n"
+        yield f"data: {json.dumps({'id': str(uuid.uuid4()), 'role': 'assistant', 'content': f'Error: {str(e)}'})}\n\n"
+
+
 
 
 @app.get("/chat-stream")
