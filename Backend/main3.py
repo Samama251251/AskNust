@@ -94,13 +94,14 @@ async def langchain_generator(user_prompt: str, chatbot: AsyncWebCrawler):
         message_id = str(uuid.uuid4())
         processing_message = {"id": message_id, "role": "assistant", "content": ""}
         yield f"data: {json.dumps(processing_message)}\n\n"
+        print("I came here1")
 
         # Fetch both RAG-based context and Web-based context in parallel
         rag_task = rag_chain.ainvoke({"input": user_prompt})
         web_task = fetch_web_content(user_prompt, chatbot)
 
         retrieved_context, web_context = await asyncio.gather(rag_task, web_task)
-
+        print("I came here2")
         # Merge both contexts
         combined_context = f"**RAG Context:**\n{retrieved_context.get('text', '')}\n\n**Web Context:**\n{web_context}"
 
