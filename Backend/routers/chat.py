@@ -9,6 +9,7 @@ import google.generativeai as genai
 from googlesearch import search
 from typing import List
 
+
 router = APIRouter()
 def search_google(query: str, num_results: int = 3) -> List[str]:
     urls = []
