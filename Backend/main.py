@@ -197,6 +197,21 @@ async def chat_stream(prompt: str):
         media_type="text/event-stream",
         headers=headers
     )
+@app.get("/test")
+async def test_endpoint():
+    """
+    A simple test endpoint to verify the API is running.
+    Returns a JSON response with a status message and timestamp.
+    """
+    return {
+        "status": "success",
+        "message": "API is running",
+        "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+        "environment": {
+            "db_connected": user_repository is not None,
+            "chatbot_initialized": chatbot is not None
+        }
+    }
 from routers import chat, auth
 
 app.include_router(chat.router, prefix="/chat")
