@@ -58,7 +58,9 @@ app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://ask-nust.vercel.app",  # your production domain
+    "http://localhost",             # allow localhost (any port if needed)
+    "http://127.0.0.1"    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
