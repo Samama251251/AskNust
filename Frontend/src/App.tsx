@@ -17,7 +17,7 @@ export default function App() {
       if (token) {
         try {
           console.log("I am here")
-          const response = await fetch('http://localhost:8000/auth/auth', {
+          const response = await fetch('https://nustchatbot.samama.live/auth/auth', {
             method: 'POST',
             credentials: 'include',
           });

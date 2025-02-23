@@ -32,7 +32,7 @@ const ChatInterface: React.FC = () => {
         }))
       );
   
-      const url = new URL('http://localhost:8000/chat-stream');
+      const url = new URL('https://nustchatbot.samama.live/chat-stream');
       url.searchParams.append('prompt', message);
       url.searchParams.append('chat_history', chatHistoryString);
       
