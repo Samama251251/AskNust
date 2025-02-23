@@ -150,7 +150,7 @@ from langchain_core.messages import SystemMessage, HumanMessage
 async def langchain_generator(user_prompt: str, chatbot: AsyncWebCrawler):
     try:
         message_id = str(uuid.uuid4())
-        yield f"data: {json.dumps({'id': message_id, 'role': 'assistant', 'content': 'Processing...'})}\n\n"
+        # yield f"data: {json.dumps({'id': message_id, 'role': 'assistant', 'content': 'Processing...'})}\n\n"
         
         print("Fetching context...")
         
@@ -183,6 +183,8 @@ async def langchain_generator(user_prompt: str, chatbot: AsyncWebCrawler):
 async def chat_stream(prompt: str):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt parameter is required")
+    if "nust" not in prompt.lower():
+        prompt+=" Nust University"
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",

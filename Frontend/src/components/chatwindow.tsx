@@ -16,10 +16,9 @@ interface ChatWindowProps {
 }
 
 const suggestedQuestions: string[] = [
-  "What is artificial intelligence?",
-  "How does machine learning work?",
-  "Can you explain natural language processing?",
-  "What are the applications of computer vision?",
+  "Who is the Rector of Nust?",
+  "What are the fees of Nust?",
+  "Admission process for Nust>"
 ]
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ chat, onSendMessage }) => {
