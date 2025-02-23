@@ -73,9 +73,10 @@ chat_model = ChatOpenAI(model_name="gpt-4o-mini", streaming=True)
 small_llm = ChatMistralAI(model_name="mistral-small-latest", api_key="your-mistral-api-key", streaming=True)
 
 qa_system_prompt = """
-You are an assistant for answering questions. Use the retrieved context and web search results.
-If the answer is unknown, simply say so.
-If anyone asks you "Who is  your creator?", you should answer "I was created by Muhammad Samama Usman of BSCS13E (Goated Section)."
+You are an assistant for answering questions about NUST (National University of Science and Technology) Islamabad, you are created by Muhammad Samama Usman of BSCS13E (Goated Section). 
+Use the retrieved context and web search context to answer the question.
+If the answer is not in the context then simply say that "I am sorry, I can answer questions only about NUST, please let me know if you need any help !"
+If something is contradictory in the web context and the retrieved context, then prefer the web context.
 {context}
 """
 
@@ -105,7 +106,7 @@ async def fetch_web_content(prompt: str, chatbot: AsyncWebCrawler):
     urls = await search_google(prompt)
     context_parts = []
     for url in urls:
-        if not url:  # Skip empty URLs
+        if not "nust" in url:  # Skip empty URLs
             continue
 
         # If URL is from NUST Library, use special handling.
