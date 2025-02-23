@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
@@ -13,7 +13,6 @@ from typing import List
 from langchain_mistralai import ChatMistralAI
 from langchain_openai import OpenAIEmbeddings
 from langchain_pinecone import PineconeVectorStore
-from langchain.chains import create_retrieval_chain
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -32,7 +31,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 REFRESH_TOKEN_EXPIRE_DAYS = 7
 
 user_repository = None  # Global repository instance
-chatbot = None  # Global chatbot instance
+chatbot = None         # Global crawler instance
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -42,8 +41,11 @@ async def lifespan(app: FastAPI):
     global user_repository, chatbot
     user_repository = UserRepository()
     app.state.user_repository = user_repository
+    
+    # Initialize the crawler and enter its async context
     chatbot = AsyncWebCrawler()
     await chatbot.__aenter__()
+    app.state.chatbot = chatbot
     
     yield
     
@@ -62,6 +64,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Initialize embeddings and vector store
 embeddings = OpenAIEmbeddings()
 vectorstore = PineconeVectorStore(
     index_name="asknust",
@@ -69,6 +72,7 @@ vectorstore = PineconeVectorStore(
 )
 retriever = vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
+# Set up chat models
 chat_model = ChatOpenAI(model_name="gpt-4o-mini", streaming=True)
 small_llm = ChatMistralAI(model_name="mistral-small-latest", api_key="your-mistral-api-key", streaming=True)
 
@@ -91,7 +95,7 @@ question_answer_chain = create_stuff_documents_chain(
     document_variable_name="context"
 )
 
-# Web Scraper
+# Web Scraper helpers
 async def search_google(query: str, num_results: int = 2) -> List[str]:
     urls = []
     try:
@@ -102,20 +106,18 @@ async def search_google(query: str, num_results: int = 2) -> List[str]:
         print(f"Error during Google search: {e}")
     return urls
 
-async def fetch_web_content(prompt: str, chatbot: AsyncWebCrawler):
+async def fetch_web_content(prompt: str, crawler: AsyncWebCrawler):
     urls = await search_google(prompt)
     context_parts = []
     for url in urls:
-        if not "nust" in url:  # Skip empty URLs
+        if "nust" not in url:  # Process only URLs that contain "nust"
             continue
 
-        # If URL is from NUST Library, use special handling.
+        # Special handling for NUST Library
         if "library.nust.edu.pk" in url:
             try:
-                # Create a separate crawler instance and initialize it.
                 specialized_crawler = AsyncWebCrawler()
                 await specialized_crawler.__aenter__()
-                # Provide custom context settings to help in creating the browser context.
                 run_cfg = CrawlerRunConfig()
                 result = await specialized_crawler.arun(url=url, config=run_cfg)
                 await specialized_crawler.__aexit__(None, None, None)
@@ -125,10 +127,9 @@ async def fetch_web_content(prompt: str, chatbot: AsyncWebCrawler):
                 print(f"Error scraping {url} with special settings: {e}")
                 continue
         else:
-            # Use the main crawler for other URLs.
             try:
                 run_cfg = CrawlerRunConfig(only_text=True)
-                result = await chatbot.arun(url=url, config=run_cfg)
+                result = await crawler.arun(url=url, config=run_cfg)
                 if result and result.markdown_v2:
                     context_parts.append(f"Source ({url}):\n{result.markdown_v2}\n")
             except Exception as e:
@@ -139,7 +140,7 @@ async def fetch_web_content(prompt: str, chatbot: AsyncWebCrawler):
 async def getRelevantDocs(prompt: str):
     print("I came in getRelevantDocs")
     context = ""
-    docs = await retriever.ainvoke(prompt)  # Use 'ainvoke' for async call
+    docs = await retriever.ainvoke(prompt)  # Use async invocation
     for doc in docs:
         context += doc.page_content
     print("Context:", context)
@@ -147,22 +148,19 @@ async def getRelevantDocs(prompt: str):
 
 from langchain_core.messages import SystemMessage, HumanMessage
 
-async def langchain_generator(user_prompt: str, chatbot: AsyncWebCrawler):
+async def langchain_generator(user_prompt: str, crawler: AsyncWebCrawler):
     try:
         message_id = str(uuid.uuid4())
-        # yield f"data: {json.dumps({'id': message_id, 'role': 'assistant', 'content': 'Processing...'})}\n\n"
-        
         print("Fetching context...")
         
-        # Call both async tasks
-        rag_task = getRelevantDocs(user_prompt)  
-        web_task = fetch_web_content(user_prompt, chatbot)
+        # Run both tasks concurrently
+        rag_task = getRelevantDocs(user_prompt)
+        web_task = fetch_web_content(user_prompt, crawler)
         retrieved_context, web_context = await asyncio.gather(rag_task, web_task)
         
         print("Context fetched.")
         full_context = f"Retrieved Context:\n{retrieved_context}\n\nWeb Search Context:\n{web_context}"
         
-        # Prepare messages as a list of BaseMessage objects
         messages = [
             SystemMessage(content=qa_system_prompt.format(context=full_context)),
             HumanMessage(content=user_prompt)
@@ -176,27 +174,26 @@ async def langchain_generator(user_prompt: str, chatbot: AsyncWebCrawler):
     except Exception as e:
         yield f"data: {json.dumps({'id': str(uuid.uuid4()), 'role': 'assistant', 'content': f'Error: {str(e)}'})}\n\n"
 
-
-
-
 @app.get("/chat-stream")
-async def chat_stream(prompt: str):
+async def chat_stream(request: Request, prompt: str):
     if not prompt:
         raise HTTPException(status_code=400, detail="Prompt parameter is required")
     if "nust" not in prompt.lower():
-        prompt+=" Nust University"
+        prompt += " Nust University"
     headers = {
         "Content-Type": "text/event-stream",
         "Cache-Control": "no-cache",
         "Connection": "keep-alive",
         "Access-Control-Allow-Origin": "*"
     }
-    chatbot = AsyncWebCrawler()
+    # Reuse the globally initialized crawler from the app state
+    crawler = request.app.state.chatbot
     return StreamingResponse(
-        langchain_generator(prompt, chatbot),
+        langchain_generator(prompt, crawler),
         media_type="text/event-stream",
         headers=headers
     )
+
 @app.get("/test")
 async def test_endpoint():
     """
@@ -212,6 +209,7 @@ async def test_endpoint():
             "chatbot_initialized": chatbot is not None
         }
     }
+
 from routers import chat, auth
 
 app.include_router(chat.router, prefix="/chat")
