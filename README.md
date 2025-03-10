@@ -16,5 +16,5 @@ AskNUST is an AI-powered chatbot designed to provide real-time and reliable answ
 - **Vector Storage**: PineconeDB for efficient semantic search  
 - **Live Data Retrieval**: Web crawler running on AWS EC2  
 
-The chatbot is live at **[AskNUST](https://lnkd.in/dwT8d_Va)**.  
+The chatbot is live at **[AskNUST](https://ask-nust.vercel.app/)**.  
 
